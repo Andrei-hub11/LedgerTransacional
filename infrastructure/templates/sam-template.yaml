@@ -1,0 +1,385 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SAM Template for LedgerTransacional Lambda Functions
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        ACCOUNTS_TABLE_NAME: !Ref AccountsTableName
+        TRANSACTIONS_TABLE_NAME: !Ref TransactionsTableName
+        ENTRIES_TABLE_NAME: !Ref EntriesTableName
+
+Parameters:
+  AccountsTableName:
+    Type: String
+    Default: Accounts
+    Description: Name of the DynamoDB table for accounts
+
+  TransactionsTableName:
+    Type: String
+    Default: Transactions
+    Description: Name of the DynamoDB table for transactions
+
+  EntriesTableName:
+    Type: String
+    Default: Entries
+    Description: Name of the DynamoDB table for transaction entries
+
+Resources:
+  # DynamoDB Tables
+  AccountsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref AccountsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: AccountId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: AccountId
+          KeyType: HASH
+      Tags:
+        - Key: Application
+          Value: LedgerTransacional
+
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TransactionsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: TransactionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: TransactionId
+          KeyType: HASH
+      Tags:
+        - Key: Application
+          Value: LedgerTransacional
+
+  EntriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref EntriesTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: EntryId
+          AttributeType: S
+        - AttributeName: TransactionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: EntryId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: TransactionIndex
+          KeySchema:
+            - AttributeName: TransactionId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: LedgerTransacional
+
+  # SQS Queue for Transactions
+  TransactionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: TransactionQueue
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 1209600 # 14 days
+      Tags:
+        - Key: Application
+          Value: LedgerTransacional
+
+  # GetAccounts Lambda Function
+  GetAccountsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetAccounts
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Accounts.GetAccounts::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt AccountsRole.Arn
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/accounts
+            Method: GET
+
+  # CreateAccount Lambda Function
+  CreateAccountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateAccount
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Accounts.CreateAccount::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt AccountsRole.Arn
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/accounts
+            Method: POST
+
+  # UpdateAccount Lambda Function
+  UpdateAccountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateAccount
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Accounts.UpdateAccount::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt AccountsRole.Arn
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/accounts/{accountId}
+            Method: PUT
+
+  # Create Transaction Lambda Function
+  CreateTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateTransaction
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Transactions.CreateTransaction::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt TransactionsRole.Arn
+      Environment:
+        Variables:
+          TRANSACTION_QUEUE_URL: !Ref TransactionQueue
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/transactions
+            Method: POST
+
+  # Get Transactions Lambda Function
+  GetTransactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetTransactions
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Transactions.GetTransactions::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt TransactionsRole.Arn
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/transactions
+            Method: GET
+
+  # Reverse Transaction Lambda Function
+  ReverseTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ReverseTransaction
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Transactions.ReverseTransaction::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt TransactionsRole.Arn
+      Environment:
+        Variables:
+          TRANSACTION_QUEUE_URL: !Ref TransactionQueue
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /api/v1/transactions/{transactionId}/reverse
+            Method: POST
+
+  # Process Transaction Lambda Function
+  ProcessTransactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ProcessTransaction
+      CodeUri: ../../src/LedgerTransacional.Functions
+      Handler: LedgerTransacional.Functions::LedgerTransacional.Functions.Transactions.ProcessTransaction::FunctionHandler
+      Runtime: dotnet8
+      Architectures:
+        - x86_64
+      Role: !GetAtt TransactionsRole.Arn
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TransactionQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # Shared IAM Role for Account Functions
+  AccountsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EntriesTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EntriesTableName}/index/*"
+
+  # Shared IAM Role for Transaction Functions
+  TransactionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:TransactWriteItems
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EntriesTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EntriesTableName}/index/*"
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt TransactionQueue.Arn
+
+Outputs:
+  GetAccountsFunction:
+    Description: "GetAccounts Lambda Function ARN"
+    Value: !GetAtt GetAccountsFunction.Arn
+
+  GetAccountsApi:
+    Description: "API Gateway endpoint URL for Prod stage for GetAccounts function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/accounts"
+
+  CreateAccountFunction:
+    Description: "CreateAccount Lambda Function ARN"
+    Value: !GetAtt CreateAccountFunction.Arn
+
+  CreateAccountApi:
+    Description: "API Gateway endpoint URL for Prod stage for CreateAccount function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/accounts"
+
+  UpdateAccountFunction:
+    Description: "UpdateAccount Lambda Function ARN"
+    Value: !GetAtt UpdateAccountFunction.Arn
+
+  UpdateAccountApi:
+    Description: "API Gateway endpoint URL for Prod stage for UpdateAccount function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/accounts/{accountId}"
+
+  CreateTransactionFunction:
+    Description: "CreateTransaction Lambda Function ARN"
+    Value: !GetAtt CreateTransactionFunction.Arn
+
+  CreateTransactionApi:
+    Description: "API Gateway endpoint URL for Prod stage for CreateTransaction function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/transactions"
+
+  GetTransactionsFunction:
+    Description: "GetTransactions Lambda Function ARN"
+    Value: !GetAtt GetTransactionsFunction.Arn
+
+  GetTransactionsApi:
+    Description: "API Gateway endpoint URL for Prod stage for GetTransactions function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/transactions"
+
+  ReverseTransactionFunction:
+    Description: "ReverseTransaction Lambda Function ARN"
+    Value: !GetAtt ReverseTransactionFunction.Arn
+
+  ReverseTransactionApi:
+    Description: "API Gateway endpoint URL for Prod stage for ReverseTransaction function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/v1/transactions/{transactionId}/reverse"
+
+  ProcessTransactionFunction:
+    Description: "ProcessTransaction Lambda Function ARN"
+    Value: !GetAtt ProcessTransactionFunction.Arn
+
+  TransactionQueueUrl:
+    Description: "SQS Queue URL for Transactions"
+    Value: !Ref TransactionQueue
+
+  AccountsRole:
+    Description: "IAM Role created for Accounts functions"
+    Value: !GetAtt AccountsRole.Arn
+
+  TransactionsRole:
+    Description: "IAM Role created for Transactions functions"
+    Value: !GetAtt TransactionsRole.Arn
+
+  AccountsTable:
+    Description: "DynamoDB Table for Accounts"
+    Value: !Ref AccountsTable
+
+  TransactionsTable:
+    Description: "DynamoDB Table for Transactions"
+    Value: !Ref TransactionsTable
+
+  EntriesTable:
+    Description: "DynamoDB Table for Entries"
+    Value: !Ref EntriesTable

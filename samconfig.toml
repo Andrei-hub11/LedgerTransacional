@@ -1,0 +1,10 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "ledger-transacional"
+resolve_s3 = true
+s3_prefix = "ledger-transacional"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "AccountsTableName=\"Accounts\" TransactionsTableName=\"Transactions\""
+image_repositories = []

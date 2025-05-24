@@ -1,0 +1,55 @@
+name: Deploy to AWS
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.201
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: SAM Build
+        run: sam build -t ./infrastructure/templates/sam-template.yaml
+
+      - name: Deploy with SAM
+        run: |
+          sam deploy \
+            --stack-name ledger-transacional \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "AccountsTableName=Accounts \
+              TransactionsTableName=Transactions \
+              EntriesTableName=Entries" \
+            --capabilities CAPABILITY_IAM

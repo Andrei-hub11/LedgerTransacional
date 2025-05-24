@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LedgerTransacional.Models\LedgerTransacional.Models.csproj" />
+    <ProjectReference Include="..\LedgerTransacional.Services\LedgerTransacional.Services.csproj" />
+    <ProjectReference Include="..\LedgerTransacional.Common\LedgerTransacional.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.APIGatewayEvents" Version="2.7.1" />
+    <PackageReference Include="Amazon.Lambda.Core" Version="2.5.1" />
+    <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.4" />
+    <PackageReference Include="Amazon.Lambda.SQSEvents" Version="2.2.0" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.0.5" />
+    <PackageReference Include="AWSSDK.SQS" Version="4.0.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>73243603-6e96-4fe5-9968-e5822dc4ff95</UserSecretsId>
+  </PropertyGroup>
+
+</Project>
